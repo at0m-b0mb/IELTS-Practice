@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS Practice Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        #left-panel, #right-panel {
+            padding: 20px;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        #left-panel {
+            width: 70%;
+            border-right: 2px solid #ddd;
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #right-panel {
+            width: 30%;
+            padding-top: 10px;
+            background-color: #eeeeee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        #timer {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0056b3;
+            margin: 10px 0;
+        }
+        #questions {
+            margin-top: 20px;
+            text-align: left;
+            width: 100%;
+        }
+        #questions h3 {
+            text-align: center;
+            color: #0056b3;
+        }
+        textarea {
+            width: 100%;
+            height: 100%;
+            font-size: 16px;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: none; /* Disable resizing */
+        }
+        #question-list {
+            display: flex;
+            flex-direction: column;
+            margin-top: 10px;
+            overflow-y: auto;
+            height: 50vh;
+        }
+        #section-selector, #audio-count-selector, #pdf-upload, #start-test {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            font-size: 16px;
+            background-color: #ffffff;
+        }
+        #start-test {
+            background-color: #0056b3;
+            color: white;
+            cursor: pointer;
+        }
+        #start-test:hover {
+            background-color: #004494;
+        }
+        
+        #stop-test {
+            background-color: #dc3545; /* Red color for the stop button */
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%; /* Make it full width */
+            font-size: 18px;
+        }
+
+        #stop-test:hover {
+            background-color: #c82333; /* Darker red on hover */
+        }
+
+        #download-answers {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #download-answers:hover {
+            background-color: #218838;
+        }
+        #pdf-viewer {
+            width: 100%;
+            height: 90%;
+            border: 1px solid #ccc;
+            display: none;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+        .hidden {
+            display: none;
+        }
+        h1 {
+            color: #0056b3;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Left Panel: PDF Viewer and Start Test Button -->
+    <div id="left-panel">
+        <h1>IELTS Practice Interface</h1>
+        <input type="file" id="pdf-upload" accept="application/pdf">
+        <label for="audio-count-selector" id="audio-count-label">Select number of audio files (1-4):</label>
+        <select id="audio-count-selector">
+            <option value="NA">Select</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+        </select>
+        <div id="audio-uploads"></div>
+        <button id="start-test">Start Test</button>
+        <button id="stop-test" class="hidden">Stop Test</button> <!-- Stop button added here -->
+        <iframe id="pdf-viewer"></iframe>
+    </div>
+
+
+    <!-- Right Panel: Timer, Section Selector, Questions -->
+    <div id="right-panel">
+        <select id="section-selector">
+            <option value="0">Reading</option>
+            <option value="1">Listening</option>
+            <option value="2">Writing</option>
+        </select>
+        <div id="timer">Reading: 60 minutes left</div>
+        <div id="questions">
+            <h3 id="section-title">Reading Section</h3>
+            <div id="question-list"></div>
+            <button onclick="saveAnswers()">Save Answers</button>
+            <button id="download-answers" class="hidden" onclick="downloadAnswers()">Download Answers</button>
+        </div>
+        <!-- Hidden Audio Players for Listening Section -->
+        <audio id="audio1" class="hidden"></audio>
+        <audio id="audio2" class="hidden"></audio>
+        <audio id="audio3" class="hidden"></audio>
+        <audio id="audio4" class="hidden"></audio>
+    </div>
+
+    <script>
+        let timerDisplay = document.getElementById('timer');
+        let sectionTitle = document.getElementById('section-title');
+        let pdfUpload = document.getElementById('pdf-upload');
+        let pdfViewer = document.getElementById('pdf-viewer');
+        let startTestButton = document.getElementById('start-test');
+        let sectionSelector = document.getElementById('section-selector');
+        let questionList = document.getElementById('question-list');
+        let downloadButton = document.getElementById('download-answers');
+        let audioUploads = document.getElementById('audio-uploads');
+        let audioCountSelector = document.getElementById('audio-count-selector');
+
+        let sections = [
+            { name: "Reading", time: 60 },
+            { name: "Listening", time: 30 },
+            { name: "Writing", time: 60 }
+        ];
+        let currentSection = 0;
+        let timer;
+        let audioFiles = [];
+        let answers = {
+            Reading: [],
+            Listening: [],
+            Writing: []
+        }; // To store answers for each section
+
+        // Load PDF and audio file inputs
+        pdfUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                pdfViewer.src = URL.createObjectURL(file);
+                pdfViewer.style.display = 'block';
+            } else {
+                alert("Please upload a PDF file.");
+            }
+        });
+
+        audioCountSelector.addEventListener('change', () => {
+            loadAudioFileInputs();
+        });
+
+        function loadAudioFileInputs() {
+            const numberOfFiles = parseInt(audioCountSelector.value);
+            audioUploads.innerHTML = ''; // Clear existing inputs
+            for (let i = 1; i <= numberOfFiles; i++) {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'audio/*';
+                input.id = `audio-file-${i}`;
+                input.onchange = loadAudioFiles; // Set the change event for each input
+                audioUploads.appendChild(input);
+            }
+        }
+
+        function loadAudioFiles() {
+            audioFiles = [];
+            for (let i = 1; i <= 4; i++) {
+                const audioInput = document.getElementById(`audio-file-${i}`);
+                if (audioInput && audioInput.files[0]) {
+                    audioFiles.push(audioInput.files[0]);
+                }
+            }
+        }
+
+        // Reference to the Stop Test button
+        let stopTestButton = document.getElementById('stop-test');
+
+        // Event listener for the Stop Test button
+        stopTestButton.addEventListener('click', () => {
+            clearInterval(timer); // Stop the timer
+            alert("The test has been stopped. You can review your answers."); // Alert the user
+            // Show the input fields again
+            document.getElementById('pdf-upload').style.display = 'block';
+            audioUploads.style.display = 'block';
+            audioCountSelector.style.display = 'block';
+            document.getElementById('audio-count-label').style.display = 'block';
+            pdfViewer.style.display = 'none'; // Hide the PDF viewer
+            startTestButton.style.display = 'block'; // Show the start button again
+            stopTestButton.style.display = 'none'; // Hide the stop button
+        });
+
+        // Modify the Start Test button click event to show the Stop Test button
+        startTestButton.addEventListener('click', () => {
+            if (!pdfViewer.src) {
+                alert("Please upload a PDF before starting the test.");
+                return;
+            }
+            if (audioFiles.length === 0) {
+                alert("Please upload audio files for the Listening section.");
+                return;
+            }
+            document.getElementById('pdf-upload').style.display = 'none';
+            audioUploads.style.display = 'none';
+            audioCountSelector.style.display = 'none';
+            document.getElementById('audio-count-label').style.display = 'none';
+            pdfViewer.style.display = 'block'; // Show PDF viewer
+            startTestButton.style.display = 'none'; // Hide start button
+            stopTestButton.style.display = 'block'; // Show stop button
+            loadQuestions(); // Load questions for the first section
+            startTimer(); // Start the first section's timer
+        });
+
+
+        sectionSelector.addEventListener('change', (e) => {
+            clearInterval(timer);
+            currentSection = parseInt(e.target.value);
+            loadQuestions();
+            startTimer();
+        });
+
+        function loadQuestions() {
+            questionList.innerHTML = ''; // Clear existing questions
+            sectionTitle.textContent = `${sections[currentSection].name} Section`;
+
+            if (sections[currentSection].name === "Writing") {
+                questionList.innerHTML = `
+                    <textarea class="question-input" placeholder="Task 1"></textarea>
+                    <textarea class="question-input" placeholder="Task 2"></textarea>`;
+            } else if (sections[currentSection].name === "Reading") {
+                for (let i = 1; i <= 40; i++) {
+                    let questionBox = document.createElement('textarea');
+                    questionBox.className = 'question-input';
+                    questionBox.placeholder = `Answer for question ${i}`;
+                    questionList.appendChild(questionBox);
+                }
+            } else {
+                for (let i = 1; i <= 40; i++) {
+                    let questionBox = document.createElement('textarea');
+                    questionBox.className = 'question-input';
+                    questionBox.placeholder = `${sections[currentSection].name} question ${i}`;
+                    questionList.appendChild(questionBox);
+                }
+                playAudioSequentially();
+            }
+            if (currentSection === sections.length - 1) {
+                downloadButton.classList.remove('hidden');
+            } else {
+                downloadButton.classList.add('hidden');
+            }
+        }
+
+        function playAudioSequentially() {
+            let audioElements = [];
+            audioFiles.forEach((file, index) => {
+                let audio = document.getElementById(`audio${index + 1}`);
+                audio.src = URL.createObjectURL(file);
+                audioElements.push(audio);
+            });
+
+            let playNext = (index) => {
+                if (index < audioElements.length) {
+                    audioElements[index].play();
+                    audioElements[index].onended = () => playNext(index + 1); // Play next audio when current ends
+                }
+            };
+
+            playNext(0); // Start playing the first audio
+        }
+
+        function startTimer() {
+            let timeLeft = sections[currentSection].time * 60; // Convert minutes to seconds
+            timerDisplay.textContent = `${sections[currentSection].name}: ${Math.floor(timeLeft / 60)} minutes left`;
+            timer = setInterval(() => {
+                timeLeft--;
+                timerDisplay.textContent = `${sections[currentSection].name}: ${Math.floor(timeLeft / 60)} minutes left`;
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    alert(`${sections[currentSection].name} time is up!`);
+                    moveToNextSection();
+                }
+            }, 1000);
+        }
+
+        function moveToNextSection() {
+            if (currentSection < sections.length - 1) {
+                sectionSelector.value = currentSection + 1;
+                sectionSelector.dispatchEvent(new Event('change'));
+            } else {
+                alert("Test completed. Download your answers!");
+                downloadButton.classList.remove('hidden');
+            }
+        }
+
+        function saveAnswers() {
+            let inputs = document.querySelectorAll('.question-input');
+            inputs.forEach((input, index) => {
+                answers[sections[currentSection].name][index] = input.value;
+            });
+            alert(`${sections[currentSection].name} answers saved. You can now download them.`);
+        }
+
+        function downloadAnswers() {
+            let output = "";
+            for (const section in answers) {
+                output += `----------${section}----------\n\n`;
+                answers[section].forEach((answer, index) => {
+                    output += `${index + 1}. ${answer}\n`;
+                });
+                output += "\n"; // Add a newline between sections
+            }
+
+            let blob = new Blob([output], { type: 'text/plain' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = 'IELTS_Answers.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Load Reading questions on page load
+        window.onload = () => {
+            loadQuestions();
+        };
+    </script>
+
+</body>
+</html>
